@@ -86,19 +86,33 @@ func DelPersonEndpoint(res http.ResponseWriter, req *http.Request) {
 
 }
 
-func UpdatePersonEndpoint(res http.ResponseWriter, req *http.Request) {
-	var person Person
-	_ = json.NewEncoder(req.Body).Decode(&person)
-	params := mux.Vars(req)
+func UpdatePersonEndpoint(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var params = mux.Vars(req)
 	id, _ := primitive.ObjectIDFromHex(params["id"])
+
+	var person Person
+	filter := bson.M{}
+	_ = json.NewDecoder(req.Body).Decode(&person)
+	update := bson.D{
+		{"$set", bson.D{
+			{"firstname", person.Firstname},
+			{"lastname", person.Lastname},
+		}},
+	}
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	result, err := collection.UpdateOne(ctx, bson.M{"id": id})
+	err := collection.FindOneAndUpdate(ctx, filter, update).Decode(&person)
+
 	if err != nil {
-		res.WriteHeader(http.StatusInternalServerError)
-		res.Write([]byte(`{"message":` + err.Error() + `"}`))
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"message":"` + err.Error() + `"}`))
 		return
 	}
-	json.NewEncoder(res).Encode(person)
+
+	person.ID = id
+
+	json.NewEncoder(w).Encode(person)
+
 }
 func main() {
 	fmt.Println("Go-Mongo DB API")
@@ -125,7 +139,7 @@ func main() {
 	router := mux.NewRouter()
 	router.HandleFunc("/person", CreatePersonEndpoint).Methods("POST")
 	router.HandleFunc("/people", GetPeopleEndpoint).Methods("GET")
-	router.HandleFunc("/person/{id}", GetPersonEndpoint).Methods("GET")
+	router.HandleFunc("/person/{id}", UpdatePersonEndpoint).Methods("PUT")
 	router.HandleFunc("/delperson/{id}", DelPersonEndpoint).Methods("DELETE")
 	http.ListenAndServe(":12345", router)
 	fmt.Println("Collection instance created!")
